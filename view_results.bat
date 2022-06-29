@@ -1,2 +1,2 @@
-plot_wing aero.db
+plot_wing CRJ700baseline.db
 pause
