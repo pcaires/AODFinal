@@ -1,2 +1,1 @@
-plot_wing CRJ700baseline.db
-pause
+plot_wing CRJ700baseline.db 1

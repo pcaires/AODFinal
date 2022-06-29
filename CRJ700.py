@@ -11,7 +11,6 @@ if __name__ == "__main__":
 
     # --- Given parameters ----
 
-
     rng = 1685 #Range (Nautical miles)
     M = 0.78   #Cruise Mach Number
     h = 10668 #Cruise alt (m)
@@ -40,6 +39,18 @@ if __name__ == "__main__":
     #Wing Profile
     CL0 = 0.0
     CD0 = 0.15
+
+
+    #From measurements file
+    crt = 2.63 # Tail Root Chord (m)
+    ctt = 1.15 # Tail tip Chord (m)
+    bt = 9     # Tail Span (m)
+
+    tail_taper = ctt/crt
+    tail_sweep = 35 #deg
+    tail_dihedral = 86-90 #deg
+
+    tail_offset = np.array([15.68, 0.0, 4.76])
     
                
     #########################
@@ -107,7 +118,9 @@ if __name__ == "__main__":
         "num_x": 2,
         "wing_type": "rect",
         "symmetry": True,
-        "offset": np.array([10, 0.0, 0.0])
+        "root_chord": crt,
+        "span": bt,
+        "offset": tail_offset
         }
 
     mesh = generate_mesh(mesh_dict)
@@ -157,6 +170,10 @@ if __name__ == "__main__":
     indep_var_comp.add_output('taper', val=wing_taper)
     indep_var_comp.add_output("CT", val=SFC, units="1/s")
     indep_var_comp.add_output("R", val=rng, units="m")
+    indep_var_comp.add_output('tail_sweep', val=tail_sweep, units='deg')
+    indep_var_comp.add_output('tail_taper', val=tail_taper)
+    indep_var_comp.add_output('tail_dihedral', val=tail_dihedral, units='deg')
+
 
     prob.model.add_subsystem("prob_vars", indep_var_comp, promotes=["*"])
 
@@ -189,13 +206,17 @@ if __name__ == "__main__":
             prob.model.connect(name + ".mesh", point_name + "." + name + ".def_mesh")
             prob.model.connect(name + ".mesh", point_name + ".aero_states." + name + "_def_mesh")
             prob.model.connect(name + ".t_over_c", point_name + "." + name + "_perf." + "t_over_c")
-            if True: #name == "wing":
-                prob.model.connect("taper", name + '.mesh.taper.taper')
-                prob.model.connect("sweep", name + '.mesh.sweep.sweep')
+            
+    # Connect surface specific parameters
 
+    prob.model.connect("taper", 'wing.mesh.taper.taper')
+    prob.model.connect("sweep", 'wing.mesh.sweep.sweep')
+    prob.model.connect("tail_taper", 'tail.mesh.taper.taper')
+    prob.model.connect("tail_sweep", 'tail.mesh.sweep.sweep')
+    prob.model.connect("tail_dihedral", 'tail.mesh.dihedral.dihedral')
+    
 
-
-        
+            
     prob.driver = om.ScipyOptimizeDriver()
     prob.driver.options['tol'] = 1e-9
 
