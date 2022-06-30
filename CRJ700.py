@@ -3,8 +3,7 @@ import numpy as np
 import openmdao.api as om
 
 from openaerostruct.geometry.utils import generate_mesh
-from openaerostruct.geometry.geometry_group import Geometry
-from openaerostruct.aerodynamics.aero_groups import AeroPoint
+from openaerostruct.integration.aerostruct_groups import AerostructGeometry, AerostructPoint
 
 
 if __name__ == "__main__":
@@ -26,6 +25,7 @@ if __name__ == "__main__":
     
     TOW = 323608   #Take off weigth (N)
     OEW = 193498   #Operating empty weigth (N)
+    OEW = OEW/9.81 #conversion to kg
 
     #alloy Al 7075-T6 as the material used in the manufacturing of
     #the wing spar
@@ -97,6 +97,7 @@ if __name__ == "__main__":
         "symmetry":True,
         "S_ref_type":"wetted",
         "fem_model_type":"tube",
+        "fem_origin": 0.35,  
         "mesh":mesh,
         "CL0":CL0,
         "CD0":CD0,
@@ -108,7 +109,14 @@ if __name__ == "__main__":
         "E":E,
         "G":G,
         "yield":yld,
-        "mrho":mrho
+        "mrho":mrho,
+        "wing_weight_ratio": 2.0,
+        "struct_weight_relief": False,  # True to add the weight of the structure to the loads on the structure
+        "distributed_fuel_weight": False,
+        "thickness_cp":np.array([0.01, 0.02]),
+        "radius_cp":np.array([0.1, 0.2]),
+
+        "exact_failure_constraint": False,  # if false, use KS function
         }
     #-----------------------------------
 
@@ -131,6 +139,7 @@ if __name__ == "__main__":
     "symmetry": True,
     "S_ref_type": "wetted",
     "fem_model_type":"tube",
+    "fem_origin": 0.35, 
     "mesh": mesh,
     "CL0": 0.0,  
     "CD0": 0.0,
@@ -143,7 +152,14 @@ if __name__ == "__main__":
     "E":E,
     "G":G,
     "yield":yld,
-    "mrho":mrho
+    "mrho":mrho,
+    "wing_weight_ratio": 2.0,
+    "struct_weight_relief": False,  # True to add the weight of the structure to the loads on the structure
+    "distributed_fuel_weight": False,
+    "thickness_cp":np.array([0.01, 0.02]),
+    "radius_cp":np.array([0.1, 0.2]),
+
+    "exact_failure_constraint": False,  # if false, use KS function
     }
 
     surfaces = [surf_dict, surf_dict2]
@@ -162,7 +178,7 @@ if __name__ == "__main__":
     indep_var_comp.add_output('Mach_number', val=M)
     indep_var_comp.add_output('re', val=re, units='1/m')
     indep_var_comp.add_output('rho', val=rho, units='kg/m**3')
-    indep_var_comp.add_output('cg', val=np.zeros((3)), units='m')
+    indep_var_comp.add_output('empty_cg', val=np.zeros((3)), units='m')
 
     # Aircraft parameters
     indep_var_comp.add_output('load_factor', val=n)
@@ -170,6 +186,7 @@ if __name__ == "__main__":
     indep_var_comp.add_output('taper', val=wing_taper)
     indep_var_comp.add_output("CT", val=SFC, units="1/s")
     indep_var_comp.add_output("R", val=rng, units="m")
+    indep_var_comp.add_output("W0", val=OEW, units="kg")
     indep_var_comp.add_output('tail_sweep', val=tail_sweep, units='deg')
     indep_var_comp.add_output('tail_taper', val=tail_taper)
     indep_var_comp.add_output('tail_dihedral', val=tail_dihedral, units='deg')
@@ -180,40 +197,52 @@ if __name__ == "__main__":
     #------------------
     
     for surface in surfaces:
-
-        geom_group = Geometry(surface=surface)
+        geom_group = AerostructGeometry(surface=surface)
         prob.model.add_subsystem(surface["name"], geom_group)
         
 
     for i in range(1):
-        aero_group = AeroPoint(surfaces=surfaces)
+        aero_group = AerostructPoint(surfaces=surfaces)
         point_name = "aero_point_{}".format(i)
         prob.model.add_subsystem(point_name, aero_group)
-
         prob.model.connect("v", point_name + ".v")
         prob.model.connect("alpha", point_name + ".alpha")
         prob.model.connect("Mach_number", point_name + ".Mach_number")
         prob.model.connect("re", point_name + ".re")
         prob.model.connect("rho", point_name + ".rho")
-        prob.model.connect("cg", point_name + ".cg")
-        #prob.model.connect("load_factor", point_name + ".load_factor")
-        #prob.model.connect("CT", point_name + ".CT")
-        #prob.model.connect("R", point_name + ".R")
-
-        # Connect the parameters within the model for each aero point
+        prob.model.connect("load_factor", point_name + ".load_factor")
+        prob.model.connect("CT", point_name + ".CT")
+        prob.model.connect("R", point_name + ".R")
+        prob.model.connect("W0", point_name + ".W0")
+        prob.model.connect("empty_cg", point_name + ".empty_cg")
+        
+        
         for surface in surfaces:
             name = surface["name"]
-            prob.model.connect(name + ".mesh", point_name + "." + name + ".def_mesh")
-            prob.model.connect(name + ".mesh", point_name + ".aero_states." + name + "_def_mesh")
-            prob.model.connect(name + ".t_over_c", point_name + "." + name + "_perf." + "t_over_c")
-            
+            com_name = point_name + "." + name + "_perf"
+            prob.model.connect(
+                name + ".local_stiff_transformed", point_name + ".coupled." + name + ".local_stiff_transformed"
+            )
+            prob.model.connect(name + ".nodes", point_name + ".coupled." + name + ".nodes")
+
+            # Connect aerodyamic mesh to coupled group mesh
+            prob.model.connect(name + ".mesh", point_name + ".coupled." + name + ".mesh")
+
+            # Connect performance calculation variables
+            prob.model.connect(name + ".radius", com_name + ".radius")
+            prob.model.connect(name + ".thickness", com_name + ".thickness")
+            prob.model.connect(name + ".nodes", com_name + ".nodes")
+            prob.model.connect(name + ".cg_location", point_name + "." + "total_perf." + name + "_cg_location")
+            prob.model.connect(name + ".structural_mass", point_name + "." + "total_perf." + name + "_structural_mass")
+            prob.model.connect(name + ".t_over_c", com_name + ".t_over_c")
+
     # Connect surface specific parameters
 
-    prob.model.connect("taper", 'wing.mesh.taper.taper')
-    prob.model.connect("sweep", 'wing.mesh.sweep.sweep')
-    prob.model.connect("tail_taper", 'tail.mesh.taper.taper')
-    prob.model.connect("tail_sweep", 'tail.mesh.sweep.sweep')
-    prob.model.connect("tail_dihedral", 'tail.mesh.dihedral.dihedral')
+    prob.model.connect("taper", 'wing.geometry.mesh.taper.taper')
+    prob.model.connect("sweep", 'wing.geometry.mesh.sweep.sweep')
+    prob.model.connect("tail_taper", 'tail.geometry.mesh.taper.taper')
+    prob.model.connect("tail_sweep", 'tail.geometry.mesh.sweep.sweep')
+    prob.model.connect("tail_dihedral", 'tail.geometry.mesh.dihedral.dihedral')
     
 
             
