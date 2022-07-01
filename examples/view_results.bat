@@ -1,1 +1,1 @@
-plot_wing morphing_aerostruct.db
+plot_wing aerostruct.db

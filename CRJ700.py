@@ -30,7 +30,7 @@ if __name__ == "__main__":
     #alloy Al 7075-T6 as the material used in the manufacturing of
     #the wing spar
     E = 70e9     #Young's modulus (Pa)
-    G = 26e6     #Shear modulus (Pa)
+    G = 26e9     #Shear modulus (Pa)
     mrho = 3e3   #Material Density (kg/m3)
     yld = 480e6  #Allowable yield stress (Pa)
 
@@ -174,7 +174,7 @@ if __name__ == "__main__":
     
     indep_var_comp = om.IndepVarComp()
     indep_var_comp.add_output('v', val=v, units='m/s')
-    indep_var_comp.add_output('alpha', val=0, units='deg')
+    indep_var_comp.add_output('alpha', val=2, units='deg')
     indep_var_comp.add_output('Mach_number', val=M)
     indep_var_comp.add_output('re', val=re, units='1/m')
     indep_var_comp.add_output('rho', val=rho, units='kg/m**3')
@@ -204,17 +204,23 @@ if __name__ == "__main__":
     for i in range(1):
         aero_group = AerostructPoint(surfaces=surfaces)
         point_name = "aero_point_{}".format(i)
-        prob.model.add_subsystem(point_name, aero_group)
-        prob.model.connect("v", point_name + ".v")
-        prob.model.connect("alpha", point_name + ".alpha")
-        prob.model.connect("Mach_number", point_name + ".Mach_number")
-        prob.model.connect("re", point_name + ".re")
-        prob.model.connect("rho", point_name + ".rho")
-        prob.model.connect("load_factor", point_name + ".load_factor")
-        prob.model.connect("CT", point_name + ".CT")
-        prob.model.connect("R", point_name + ".R")
-        prob.model.connect("W0", point_name + ".W0")
-        prob.model.connect("empty_cg", point_name + ".empty_cg")
+        prob.model.add_subsystem(
+            point_name,
+            aero_group,
+            promotes_inputs=[
+                "v",
+                "alpha",
+                "Mach_number",
+                "re",
+                "rho",
+                "CT",
+                "R",
+                "W0",
+                "speed_of_sound",
+                "empty_cg",
+                "load_factor",
+            ],
+        )
         
         
         for surface in surfaces:
@@ -254,10 +260,18 @@ if __name__ == "__main__":
     prob.driver.recording_options['record_derivatives'] = True
     prob.driver.recording_options['includes'] = ['*']
 
-    prob.model.add_objective(point_name + '.wing_perf.CD', scaler=1e4)
-    prob.model.add_design_var('alpha',-10,10)
+    # Setup problem and add design variables, constraint, and objective
+    #prob.model.add_design_var("wing.twist_cp", lower=-10.0, upper=15.0)
+    prob.model.add_design_var("wing.thickness_cp", lower=0.01, upper=0.5, scaler=1e2)
+    prob.model.add_constraint("aero_point_0.wing_perf.failure", upper=0.0)
+    prob.model.add_constraint("aero_point_0.wing_perf.thickness_intersects", upper=0.0)
 
-    prob.setup()
+    # Add design variables, constraisnt, and objective on the problem
+    prob.model.add_design_var("alpha", lower=-10.0, upper=10.0)
+    prob.model.add_constraint("aero_point_0.L_equals_W", equals=0.0)
+    prob.model.add_objective("aero_point_0.fuelburn", scaler=1e-5)
+
+    prob.setup(check=True)
 
     #prob.run_model()
     prob.run_driver()
