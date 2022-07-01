@@ -261,7 +261,7 @@ if __name__ == "__main__":
     prob.driver.recording_options['includes'] = ['*']
 
     # Setup problem and add design variables, constraint, and objective
-    #prob.model.add_design_var("wing.twist_cp", lower=-10.0, upper=15.0)
+    prob.model.add_design_var("wing.geometry.mesh.rotate.twist", lower=-10.0, upper=15.0)
     prob.model.add_design_var("wing.thickness_cp", lower=0.01, upper=0.5, scaler=1e2)
     prob.model.add_constraint("aero_point_0.wing_perf.failure", upper=0.0)
     prob.model.add_constraint("aero_point_0.wing_perf.thickness_intersects", upper=0.0)
