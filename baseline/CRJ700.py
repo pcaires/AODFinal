@@ -21,9 +21,11 @@ if __name__ == "__main__":
     AR = 8
     t_c = 0.12
     Clmax = 0.6
-    SFC = 0.38 #Engine specific fuel consuption (GE CF34)
+    SFC = 0.38 #Engine specific fuel consuption (GE CF34) [1/h]
     
     TOW = 323608   #Take off weigth (N)
+    TOW = TOW/9.81 #conversion to kg
+    
     OEW = 193498   #Operating empty weigth (N)
     OEW = OEW/9.81 #conversion to kg
 
@@ -34,7 +36,7 @@ if __name__ == "__main__":
     mrho = 3e3   #Material Density (kg/m3)
     yld = 480e6  #Allowable yield stress (Pa)
 
-    n = 2.5 #load factor
+    n = 1 #2.5 #load factor
 
     #Wing Profile
     CL0 = 0.0
@@ -66,17 +68,10 @@ if __name__ == "__main__":
 
     cr = 2*cm/(1+wing_taper) #root chord
 
-
-    
     mu = 1.458e-6 * T**(1.5) * (T+110.4)**(-1) #Dynamic viscosity [Ns/m^2]
     nu = mu/rho #kinematic viscosity [m^2/s]
 
     re = v/nu #Reynold Number 1/m
-
-
-    #Reference CL 
-    CL_ = (2*TOW)/(rho * S * v**2)
-
     
     
     #Define Wing
@@ -111,8 +106,9 @@ if __name__ == "__main__":
         "yield":yld,
         "mrho":mrho,
         "wing_weight_ratio": 2.0,
-        "struct_weight_relief": False,  # True to add the weight of the structure to the loads on the structure
-        "distributed_fuel_weight": False,
+        "struct_weight_relief": True,  # True to add the weight of the structure to the loads on the structure
+        "distributed_fuel_weight": True,
+        "Wf_reserve": 15000.0,  # [kg] reserve fuel mass
         "thickness_cp":np.array([0.01, 0.02]),
         "radius_cp":np.array([0.1, 0.2]),
 
@@ -142,7 +138,7 @@ if __name__ == "__main__":
     "fem_origin": 0.35, 
     "mesh": mesh,
     "CL0": 0.0,  
-    "CD0": 0.0,
+    "CD0": 0.015,
     "fem_origin": 0.35,
     "k_lam": 0.05,  
     "t_over_c_cp": np.array([t_c]), 
@@ -154,7 +150,7 @@ if __name__ == "__main__":
     "yield":yld,
     "mrho":mrho,
     "wing_weight_ratio": 2.0,
-    "struct_weight_relief": False,  # True to add the weight of the structure to the loads on the structure
+    "struct_weight_relief": True,  # True to add the weight of the structure to the loads on the structure
     "distributed_fuel_weight": False,
     "thickness_cp":np.array([0.01, 0.02]),
     "radius_cp":np.array([0.1, 0.2]),
@@ -184,9 +180,9 @@ if __name__ == "__main__":
     indep_var_comp.add_output('load_factor', val=n)
     indep_var_comp.add_output('sweep', val=wing_sweep, units='deg')
     indep_var_comp.add_output('taper', val=wing_taper)
-    indep_var_comp.add_output("CT", val=SFC, units="1/s")
+    indep_var_comp.add_output("CT", val=SFC/3600, units="1/s")
     indep_var_comp.add_output("R", val=rng, units="m")
-    indep_var_comp.add_output("W0", val=OEW, units="kg")
+    indep_var_comp.add_output("W0", val=TOW, units="kg")
     indep_var_comp.add_output('tail_sweep', val=tail_sweep, units='deg')
     indep_var_comp.add_output('tail_taper', val=tail_taper)
     indep_var_comp.add_output('tail_dihedral', val=tail_dihedral, units='deg')
@@ -253,7 +249,7 @@ if __name__ == "__main__":
 
             
     prob.driver = om.ScipyOptimizeDriver()
-    prob.driver.options['tol'] = 1e-9
+    prob.driver.options['tol'] = 1e-4
 
     recorder = om.SqliteRecorder("CRJ700baseline.db")
     prob.driver.add_recorder(recorder)
@@ -261,13 +257,16 @@ if __name__ == "__main__":
     prob.driver.recording_options['includes'] = ['*']
 
     # Setup problem and add design variables, constraint, and objective
-    prob.model.add_design_var("wing.geometry.mesh.rotate.twist", lower=-10.0, upper=15.0)
+    #prob.model.add_design_var("wing.geometry.mesh.rotate.twist", lower=-10.0, upper=15.0)
     prob.model.add_design_var("wing.thickness_cp", lower=0.01, upper=0.5, scaler=1e2)
     prob.model.add_constraint("aero_point_0.wing_perf.failure", upper=0.0)
     prob.model.add_constraint("aero_point_0.wing_perf.thickness_intersects", upper=0.0)
+    
+    
 
     # Add design variables, constraisnt, and objective on the problem
-    prob.model.add_design_var("alpha", lower=-10.0, upper=10.0)
+    prob.model.add_design_var("alpha", lower=-10.0, upper=20.0)
+    prob.model.add_constraint("aero_point_0.wing_perf.Cl", upper=Clmax) 
     prob.model.add_constraint("aero_point_0.L_equals_W", equals=0.0)
     prob.model.add_objective("aero_point_0.fuelburn", scaler=1e-5)
 
@@ -275,8 +274,15 @@ if __name__ == "__main__":
 
     #prob.run_model()
     prob.run_driver()
-  
 
-
+    print("Design Variables")
+    print("AoA: ", prob["alpha"], "[deg]")
+    print("Spar thickness: ", prob["wing.thickness_cp"], " ")
     
-                    
+
+    print("Performance Metrics")
+    print("The fuel burn value is ", prob["aero_point_0.fuelburn"][0], "[kg]")
+    print("Lift to Weight difference: ", prob["aero_point_0.L_equals_W"][0])
+    print("No Failure: ", prob["aero_point_0.wing_perf.failure"][0], "<0")
+    print("No Intersects: ", prob["aero_point_0.wing_perf.thickness_intersects"][0], "<0")
+    
