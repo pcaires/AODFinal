@@ -10,9 +10,9 @@ if __name__ == "__main__":
 
     # --- Given parameters ----
 
-    rng = 1685 #Range (Nautical miles)
+    rng = 1685 * 1852 #Range (m)
     M = 0.78   #Cruise Mach Number
-    h = 10668 #Cruise alt (m)
+    h = 10668  #Cruise alt (m) (ISA Atmosphere valid < 11km)
     
     b = 23.24  #span (m)
     
@@ -27,7 +27,10 @@ if __name__ == "__main__":
     TOW = TOW/9.81 #conversion to kg
     
     OEW = 193498   #Operating empty weigth (N)
-    OEW = OEW/9.81 #conversion to kg
+
+    ReserveFuel = .5*(TOW-OEW)/9.81 #Approximation: half of cargo is fuel
+
+    
 
     #alloy Al 7075-T6 as the material used in the manufacturing of
     #the wing spar
@@ -36,11 +39,11 @@ if __name__ == "__main__":
     mrho = 3e3   #Material Density (kg/m3)
     yld = 480e6  #Allowable yield stress (Pa)
 
-    n = 2.5 #load factor
+    n = 1# 2.5 #load factor
 
     #Wing Profile
-    CL0 = 0.0
-    CD0 = 0.15
+    CL0 = 0.2
+    CD0 = 0.015
 
 
     #From measurements file
@@ -106,13 +109,12 @@ if __name__ == "__main__":
         "yield":yld,
         "mrho":mrho,
         "wing_weight_ratio": 2.0,
-        "struct_weight_relief": True,  # True to add the weight of the structure to the loads on the structure
+        "struct_weight_relief": True,  
         "distributed_fuel_weight": True,
-        "Wf_reserve": 15000.0,  # [kg] reserve fuel mass
+        "Wf_reserve": ReserveFuel,  
         "thickness_cp":np.array([0.01, 0.02]),
         "radius_cp":np.array([0.1, 0.2]),
-
-        "exact_failure_constraint": False,  # if false, use KS function
+        "exact_failure_constraint": True,  # if false, use KS function
         }
     #-----------------------------------
 
@@ -129,36 +131,36 @@ if __name__ == "__main__":
 
     mesh = generate_mesh(mesh_dict)
 
-    surf_dict2 = {
-       
-    "name": "tail", 
-    "symmetry": True,
-    "S_ref_type": "wetted",
-    "fem_model_type":"tube",
-    "fem_origin": 0.35, 
-    "mesh": mesh,
-    "CL0": 0.0,  
-    "CD0": 0.015,
-    "fem_origin": 0.35,
-    "k_lam": 0.05,  
-    "t_over_c_cp": np.array([t_c]), 
-    "c_max_t": 0.303,  
-    "with_viscous": True,
-    "with_wave": True,
-    "E":E,
-    "G":G,
-    "yield":yld,
-    "mrho":mrho,
-    "wing_weight_ratio": 2.0,
-    "struct_weight_relief": True,  # True to add the weight of the structure to the loads on the structure
-    "distributed_fuel_weight": False,
-    "thickness_cp":np.array([0.01, 0.02]),
-    "radius_cp":np.array([0.1, 0.2]),
-
-    "exact_failure_constraint": False,  # if false, use KS function
+    surf_dict2 = { 
+        "name": "tail", 
+        "symmetry": True,
+        "S_ref_type": "wetted",
+        "fem_model_type":"tube",
+        "fem_origin": 0.35, 
+        "mesh": mesh,
+        "CL0": 0.0,  
+        "CD0": 0.0,
+        "fem_origin": 0.35,
+        "k_lam": 0.05,  
+        "t_over_c_cp": np.array([t_c]), 
+        "c_max_t": 0.303,  
+        "with_viscous": True,
+        "with_wave": True,
+        "E":E,
+        "G":G,
+        "yield":yld,
+        "mrho":mrho,
+        "wing_weight_ratio": 2.0,
+        "struct_weight_relief": True,  # True to add the weight of the structure to the loads on the structure
+        "distributed_fuel_weight": False,
+        "thickness_cp":np.array([0.01, 0.02]),
+        "radius_cp":np.array([0.1, 0.2]),
+        "exact_failure_constraint": False,  # if false, use KS function
     }
 
     surfaces = [surf_dict, surf_dict2]
+
+    
     #-----------------------------------
 
 
@@ -217,6 +219,7 @@ if __name__ == "__main__":
                 "load_factor",
             ],
         )
+
         
         
         for surface in surfaces:
@@ -258,17 +261,17 @@ if __name__ == "__main__":
 
     # Setup problem and add design variables, constraint, and objective
     #prob.model.add_design_var("wing.geometry.mesh.rotate.twist", lower=-10.0, upper=15.0)
-    prob.model.add_design_var("wing.thickness_cp", lower=0.01, upper=0.5, scaler=1e2)
-    prob.model.add_constraint("aero_point_0.wing_perf.failure", upper=0.0)
-    prob.model.add_constraint("aero_point_0.wing_perf.thickness_intersects", upper=0.0)
+    #prob.model.add_design_var("wing.thickness_cp", lower=0.01, upper=0.5, scaler=1e2)
+    #prob.model.add_constraint("aero_point_0.wing_perf.failure", upper=0.0)
+    #prob.model.add_constraint("aero_point_0.wing_perf.thickness_intersects", upper=0.0)
     
-    
-
-    # Add design variables, constraisnt, and objective on the problem
+    # Add design variables, constraints, and objective on the problem
     prob.model.add_design_var("alpha", lower=-10.0, upper=20.0)
+    prob.model.add_design_var("tail.geometry.mesh.rotate.twist", -10, 10)
     prob.model.add_constraint("aero_point_0.wing_perf.Cl", upper=Clmax) 
     prob.model.add_constraint("aero_point_0.L_equals_W", equals=0.0)
-    prob.model.add_objective("aero_point_0.fuelburn", scaler=1e-2)
+    #prob.model.add_constraint("aero_point_0.CM",lower = -0.0001, upper = 0.0001)
+    prob.model.add_objective("aero_point_0.fuelburn", scaler=1e4)
 
     prob.setup(check=True)
 
@@ -281,6 +284,14 @@ if __name__ == "__main__":
     
 
     print("Performance Metrics")
+    print("CL: ", prob["aero_point_0.CL"][0])
+    print("CD: ", prob["aero_point_0.CD"][0])
+    print("CM: ", prob["aero_point_0.CM"][1])
+    print("CG: ", prob["aero_point_0.cg"])
+    
+
+
+    print("The range value is ", prob["R"][0], "[m]")
     print("The fuel burn value is ", prob["aero_point_0.fuelburn"][0], "[kg]")
     print("Lift to Weight difference: ", prob["aero_point_0.L_equals_W"][0])
     print("No Failure: ", prob["aero_point_0.wing_perf.failure"][0], "<0")
