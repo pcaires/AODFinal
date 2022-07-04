@@ -36,7 +36,7 @@ if __name__ == "__main__":
     mrho = 3e3   #Material Density (kg/m3)
     yld = 480e6  #Allowable yield stress (Pa)
 
-    n = 1 #2.5 #load factor
+    n = 2.5 #load factor
 
     #Wing Profile
     CL0 = 0.0
@@ -268,7 +268,7 @@ if __name__ == "__main__":
     prob.model.add_design_var("alpha", lower=-10.0, upper=20.0)
     prob.model.add_constraint("aero_point_0.wing_perf.Cl", upper=Clmax) 
     prob.model.add_constraint("aero_point_0.L_equals_W", equals=0.0)
-    prob.model.add_objective("aero_point_0.fuelburn", scaler=1e-5)
+    prob.model.add_objective("aero_point_0.fuelburn", scaler=1e-2)
 
     prob.setup(check=True)
 
