@@ -1,3 +1,5 @@
 
-baseline/CRJ700baseline.db
+baseline/*.db
+baseline/*.html
 examples/*.db
+examples/*.html

@@ -85,6 +85,10 @@ indep_var_comp.add_output("re", val=1.0e6, units="1/m")
 indep_var_comp.add_output("rho", val=0.38, units="kg/m**3")
 indep_var_comp.add_output("cg", val=np.zeros((3)), units="m")
 
+
+
+
+
 prob.model.add_subsystem("prob_vars", indep_var_comp, promotes=["*"])
 
 # Loop over each surface in the surfaces list
@@ -127,6 +131,7 @@ for i in range(1):
 
         prob.model.connect(name + ".t_over_c", point_name + "." + name + "_perf." + "t_over_c")
 
+
 # Set up the problem
 
 
@@ -139,12 +144,14 @@ prob.driver.recording_options['record_derivatives'] = True
 prob.driver.recording_options['includes'] = ['*']
 
 prob.model.add_objective(point_name + '.wing_perf.CD', scaler=1e4)
+prob.model.add_constraint(point_name + '.CM', -0.001,0.001)
 prob.model.add_design_var('alpha',-10,10)
+prob.model.add_design_var('tail.twist_cp',-0.1,0.1)
 
 prob.setup()
 
-prob.run_model()
-#prob.run_driver()
+#prob.run_model()
+prob.run_driver()
 
 
 print(prob["aero_point_0.wing_perf.CD"][0])

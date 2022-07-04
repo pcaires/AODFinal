@@ -1,1 +1,1 @@
-plot_wing aerostruct.db
+plot_wing aero.db
