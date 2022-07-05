@@ -10,6 +10,9 @@ if __name__ == "__main__":
 
     # --- Given parameters ----
 
+    print('0-Level Flight 1-maneuver')
+    mv = bool(int(input('-')))
+
     rng = 1685 * 1852 #Range (m)
     M = 0.78   #Cruise Mach Number
     h = 10668  #Cruise alt (m) (ISA Atmosphere valid < 11km)
@@ -23,19 +26,18 @@ if __name__ == "__main__":
     Clmax = 0.6
     SFC = 0.38 #Engine specific fuel consuption (GE CF34) [1/h]
     
-    TOW = 323608   #Take off weigth (N)
-    W0 = TOW * 0.8/9.81 # W0 = 80% capacity [kg]
+    TOW = 323608/9.81   #Take off weigth (N)
+    W0 = TOW * 1
 
     
-    OEW = 193498   #Operating empty weigth (N)
+    OEW = 193498/9.81   #Operating empty weigth (N)
 
     #Fuel_Capacity = 19595*0.4535924 #kg
     #Payload_Useful= 18800*0.4535924 #kg
     
-    Reserve_Fuel = .5*(TOW-OEW)/9.81 #Approximation: half of cargo is fuel
+    Reserve_Fuel = .6*(TOW-OEW) #Approximation: 60% of cargo is fuel
 
     
-
     #alloy Al 7075-T6 as the material used in the manufacturing of
     #the wing spar
     E = 70e9     #Young's modulus (Pa)
@@ -44,7 +46,8 @@ if __name__ == "__main__":
     yld = 480e6  #Allowable yield stress (Pa)
     
     n = 2.5 #load factor
-    #n = 1
+    if not mv:
+        n = 1
 
     #Wing Profile
     CL0 = 0.2
@@ -182,6 +185,7 @@ if __name__ == "__main__":
     indep_var_comp.add_output('Mach_number', val=M)
     indep_var_comp.add_output('re', val=re, units='1/m')
     indep_var_comp.add_output('rho', val=rho, units='kg/m**3')
+    
     indep_var_comp.add_output('empty_cg', val=np.array([5.92,0,0]), units='m')
 
     # Aircraft parameters
@@ -220,7 +224,7 @@ if __name__ == "__main__":
                 "CT",
                 "R",
                 "W0",
-                "speed_of_sound",
+                #"speed_of_sound",
                 "empty_cg",
                 "load_factor",
             ],
@@ -277,14 +281,16 @@ if __name__ == "__main__":
     
     # Add design variables, constraints, and objective on the problem
     prob.model.add_design_var("alpha", lower=-10.0, upper=20.0)
-    #prob.model.add_design_var("empty_cg",lower = np.array([0,0,0]),upper = np.array([10,0,0]))
     #prob.model.add_design_var("tail.geometry.mesh.rotate.twist", -10, 10)
     prob.model.add_constraint("aero_point_0.wing_perf.Cl", upper=Clmax) 
     prob.model.add_constraint("aero_point_0.L_equals_W", equals=0.0)
-    #prob.model.add_constraint("aero_point_0.CM",-1e-15,1e-15)
-    #prob.model.add_objective("aero_point_0.fuelburn", scaler=1e-2)
-    prob.model.add_objective("aero_point_0.CD", scaler=1e4)
-    #prob.model.add_objective("aero_point_0.CD", scaler=1e4)
+
+    if not mv:
+        prob.model.add_constraint("aero_point_0.CM",-1e-15,1e-15)
+        prob.model.add_design_var("empty_cg",lower = np.array([0,0,0]),upper = np.array([10,0,0]))
+        prob.model.add_objective("aero_point_0.fuelburn", scaler=1e-2)
+    else:
+        prob.model.add_objective("aero_point_0.CD", scaler=1e4)
 
     prob.setup(check=True)
 
