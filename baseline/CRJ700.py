@@ -24,11 +24,15 @@ if __name__ == "__main__":
     SFC = 0.38 #Engine specific fuel consuption (GE CF34) [1/h]
     
     TOW = 323608   #Take off weigth (N)
-    TOW = TOW/9.81 #conversion to kg
+    W0 = TOW * 0.8/9.81 # W0 = 80% capacity [kg]
+
     
     OEW = 193498   #Operating empty weigth (N)
 
-    ReserveFuel = .5*(TOW-OEW)/9.81 #Approximation: half of cargo is fuel
+    #Fuel_Capacity = 19595*0.4535924 #kg
+    #Payload_Useful= 18800*0.4535924 #kg
+    
+    Reserve_Fuel = .5*(TOW-OEW)/9.81 #Approximation: half of cargo is fuel
 
     
 
@@ -38,11 +42,12 @@ if __name__ == "__main__":
     G = 26e9     #Shear modulus (Pa)
     mrho = 3e3   #Material Density (kg/m3)
     yld = 480e6  #Allowable yield stress (Pa)
-
-    n = 1# 2.5 #load factor
+    
+    n = 2.5 #load factor
+    #n = 1
 
     #Wing Profile
-    CL0 = 0.2
+    CL0 = 0.3
     CD0 = 0.015
 
 
@@ -111,7 +116,7 @@ if __name__ == "__main__":
         "wing_weight_ratio": 2.0,
         "struct_weight_relief": True,  
         "distributed_fuel_weight": True,
-        "Wf_reserve": ReserveFuel,  
+        "Wf_reserve": Reserve_Fuel,  
         "thickness_cp":np.array([0.01, 0.02]),
         "radius_cp":np.array([0.1, 0.2]),
         "exact_failure_constraint": True,  # if false, use KS function
@@ -145,6 +150,7 @@ if __name__ == "__main__":
         "t_over_c_cp": np.array([t_c]), 
         "c_max_t": 0.303,  
         "with_viscous": True,
+
         "with_wave": True,
         "E":E,
         "G":G,
@@ -176,7 +182,7 @@ if __name__ == "__main__":
     indep_var_comp.add_output('Mach_number', val=M)
     indep_var_comp.add_output('re', val=re, units='1/m')
     indep_var_comp.add_output('rho', val=rho, units='kg/m**3')
-    indep_var_comp.add_output('empty_cg', val=np.zeros((3)), units='m')
+    indep_var_comp.add_output('empty_cg', val=np.array([5.92,0,0]), units='m')
 
     # Aircraft parameters
     indep_var_comp.add_output('load_factor', val=n)
@@ -184,7 +190,7 @@ if __name__ == "__main__":
     indep_var_comp.add_output('taper', val=wing_taper)
     indep_var_comp.add_output("CT", val=SFC/3600, units="1/s")
     indep_var_comp.add_output("R", val=rng, units="m")
-    indep_var_comp.add_output("W0", val=TOW, units="kg")
+    indep_var_comp.add_output("W0", val=W0, units="kg")
     indep_var_comp.add_output('tail_sweep', val=tail_sweep, units='deg')
     indep_var_comp.add_output('tail_taper', val=tail_taper)
     indep_var_comp.add_output('tail_dihedral', val=tail_dihedral, units='deg')
@@ -262,38 +268,48 @@ if __name__ == "__main__":
     # Setup problem and add design variables, constraint, and objective
     #prob.model.add_design_var("wing.geometry.mesh.rotate.twist", lower=-10.0, upper=15.0)
     #prob.model.add_design_var("wing.thickness_cp", lower=0.01, upper=0.5, scaler=1e2)
-    #prob.model.add_constraint("aero_point_0.wing_perf.failure", upper=0.0)
-    #prob.model.add_constraint("aero_point_0.wing_perf.thickness_intersects", upper=0.0)
+    #prob.model.add_design_var("tail.thickness_cp", lower=0.01, upper=0.5, scaler=1e2)
+    prob.model.add_constraint("aero_point_0.wing_perf.failure", upper=0.0)
+    prob.model.add_constraint("aero_point_0.tail_perf.failure", upper=0.0)
+    prob.model.add_constraint("aero_point_0.wing_perf.thickness_intersects", upper=0.0)
+    prob.model.add_constraint("aero_point_0.tail_perf.thickness_intersects", upper=0.0)
+    
     
     # Add design variables, constraints, and objective on the problem
     prob.model.add_design_var("alpha", lower=-10.0, upper=20.0)
-    prob.model.add_design_var("tail.geometry.mesh.rotate.twist", -10, 10)
+    #prob.model.add_design_var("empty_cg",lower = np.array([0,0,0]),upper = np.array([10,0,0]))
+    #prob.model.add_design_var("tail.geometry.mesh.rotate.twist", -10, 10)
     prob.model.add_constraint("aero_point_0.wing_perf.Cl", upper=Clmax) 
     prob.model.add_constraint("aero_point_0.L_equals_W", equals=0.0)
-    #prob.model.add_constraint("aero_point_0.CM",lower = -0.0001, upper = 0.0001)
-    prob.model.add_objective("aero_point_0.fuelburn", scaler=1e4)
+    #prob.model.add_constraint("aero_point_0.CM",-1e-15,1e-15)
+    #prob.model.add_objective("aero_point_0.fuelburn", scaler=1e-2)
+    prob.model.add_objective("aero_point_0.CD", scaler=1e4)
+    #prob.model.add_objective("aero_point_0.CD", scaler=1e4)
 
     prob.setup(check=True)
 
     #prob.run_model()
     prob.run_driver()
 
-    print("Design Variables")
+    #print("Design Variables")
     print("AoA: ", prob["alpha"], "[deg]")
-    print("Spar thickness: ", prob["wing.thickness_cp"], " ")
+    #print("Spar thickness: ", prob["wing.thickness_cp"], " ")
     
 
     print("Performance Metrics")
+    print("Load factor: ",n)
     print("CL: ", prob["aero_point_0.CL"][0])
     print("CD: ", prob["aero_point_0.CD"][0])
     print("CM: ", prob["aero_point_0.CM"][1])
-    print("CG: ", prob["aero_point_0.cg"])
+    print("Empty CG: ", prob["aero_point_0.empty_cg"])
     
 
 
-    print("The range value is ", prob["R"][0], "[m]")
+    #print("The range value is ", prob["R"][0], "[m]")
     print("The fuel burn value is ", prob["aero_point_0.fuelburn"][0], "[kg]")
     print("Lift to Weight difference: ", prob["aero_point_0.L_equals_W"][0])
-    print("No Failure: ", prob["aero_point_0.wing_perf.failure"][0], "<0")
-    print("No Intersects: ", prob["aero_point_0.wing_perf.thickness_intersects"][0], "<0")
+    print("No Failure: ", prob["aero_point_0.wing_perf.failure"], "<0")
+    print("No Intersects: ", prob["aero_point_0.wing_perf.thickness_intersects"], "<0")
+
+    print("Tail CL: ",prob["aero_point_0.tail_perf.CL"][0])
     
