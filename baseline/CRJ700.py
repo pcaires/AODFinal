@@ -47,14 +47,14 @@ if __name__ == "__main__":
     #n = 1
 
     #Wing Profile
-    CL0 = 0.3
+    CL0 = 0.2
     CD0 = 0.015
 
 
     #From measurements file
     crt = 2.63 # Tail Root Chord (m)
     ctt = 1.15 # Tail tip Chord (m)
-    bt = 9     # Tail Span (m)
+    bt = 8.54     # Tail Span (m)
 
     tail_taper = ctt/crt
     tail_sweep = 35 #deg

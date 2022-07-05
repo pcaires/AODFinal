@@ -84,6 +84,7 @@ indep_var_comp.add_output("Mach_number", val=0.84)
 indep_var_comp.add_output("re", val=1.0e6, units="1/m")
 indep_var_comp.add_output("rho", val=0.38, units="kg/m**3")
 indep_var_comp.add_output("cg", val=np.zeros((3)), units="m")
+indep_var_comp.add_output('sweep', val=-10, units='deg')
 
 
 
@@ -116,6 +117,7 @@ for i in range(1):
     prob.model.connect("re", point_name + ".re")
     prob.model.connect("rho", point_name + ".rho")
     prob.model.connect("cg", point_name + ".cg")
+    
 
     # Connect the parameters within the model for each aero point
     for surface in surfaces:
@@ -131,7 +133,7 @@ for i in range(1):
 
         prob.model.connect(name + ".t_over_c", point_name + "." + name + "_perf." + "t_over_c")
 
-
+prob.model.connect("sweep", 'wing.mesh.sweep.sweep')
 # Set up the problem
 
 
