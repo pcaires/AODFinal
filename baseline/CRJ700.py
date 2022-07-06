@@ -26,19 +26,18 @@ if __name__ == "__main__":
     Clmax = 0.6
     SFC = 0.38 #Engine specific fuel consuption (GE CF34) [1/h]
     
-    TOW = 323608/9.81   #Take off weigth (N)
-    W0 = TOW * 1
+    TOW = 323608/9.81   #Take off weigth (kg)
+    OEW = 193498/9.81   #Operating empty weigth (kg)
 
-    
-    OEW = 193498/9.81   #Operating empty weigth (N)
+    Wing_tail_weight = 5700 #Approximation wing+tail weight (kg)
 
     Fuel_Capacity = 19595*0.4535924 #kg
-    #Payload_Useful= 18800*0.4535924 #kg
+    Payload_Useful= 18800*0.4535924 #kg
     
-    Reserve_Fuel = .6*(TOW-OEW) #Approximation: 60% of cargo is fuel
+    Reserve_Fuel = .1*Fuel_Capacity #Approximation: 10% fuel capacity reserve
+    Payload = .4*Payload_Useful #Approximation: 40% payload
 
-    if Reserve_Fuel > Fuel_Capacity:
-        raise ValueError()
+    W0 = OEW - Wing_tail_weight + Reserve_Fuel + Payload #Fuselage + cargo + fuel
 
     
     #alloy Al 7075-T6 as the material used in the manufacturing of
@@ -47,6 +46,10 @@ if __name__ == "__main__":
     G = 26e9     #Shear modulus (Pa)
     mrho = 3e3   #Material Density (kg/m3)
     yld = 480e6  #Allowable yield stress (Pa)
+
+    wing_thick = np.array([0.01, 0.02])
+    wing_radii = np.array([0.1, 0.2])
+    tail_factor = 1/2
     
     n = 2.5 #load factor
     if not mv:
@@ -86,6 +89,7 @@ if __name__ == "__main__":
     nu = mu/rho #kinematic viscosity [m^2/s]
 
     re = v/nu #Reynold Number 1/m
+
     
     
     #Define Wing
@@ -123,8 +127,8 @@ if __name__ == "__main__":
         "struct_weight_relief": True,  
         "distributed_fuel_weight": True,
         "Wf_reserve": Reserve_Fuel,  
-        "thickness_cp":np.array([0.01, 0.02]),
-        "radius_cp":np.array([0.1, 0.2]),
+        "thickness_cp":wing_thick,
+        "radius_cp":wing_radii,
         "exact_failure_constraint": True,  # if false, use KS function
         }
     #-----------------------------------
@@ -165,8 +169,8 @@ if __name__ == "__main__":
         "wing_weight_ratio": 2.0,
         "struct_weight_relief": True,  # True to add the weight of the structure to the loads on the structure
         "distributed_fuel_weight": False,
-        "thickness_cp":np.array([0.01, 0.02]),
-        "radius_cp":np.array([0.1, 0.2]),
+        "thickness_cp":tail_factor*wing_thick,
+        "radius_cp":tail_factor*wing_radii,
         "exact_failure_constraint": False,  # if false, use KS function
     }
 
@@ -189,7 +193,7 @@ if __name__ == "__main__":
     indep_var_comp.add_output('re', val=re, units='1/m')
     indep_var_comp.add_output('rho', val=rho, units='kg/m**3')
     
-    indep_var_comp.add_output('empty_cg', val=np.array([5.92,0,0]), units='m')
+    indep_var_comp.add_output('empty_cg', val=np.array([6.07,0,0]), units='m')
 
     # Aircraft parameters
     indep_var_comp.add_output('load_factor', val=n)
@@ -212,47 +216,46 @@ if __name__ == "__main__":
         prob.model.add_subsystem(surface["name"], geom_group)
         
 
-    for i in range(1):
-        aero_group = AerostructPoint(surfaces=surfaces)
-        point_name = "aero_point_{}".format(i)
-        prob.model.add_subsystem(
-            point_name,
-            aero_group,
-            promotes_inputs=[
-                "v",
-                "alpha",
-                "Mach_number",
-                "re",
-                "rho",
-                "CT",
-                "R",
-                "W0",
-                #"speed_of_sound",
-                "empty_cg",
-                "load_factor",
-            ],
+    aero_group = AerostructPoint(surfaces=surfaces)
+    point_name = "aero_point_{}".format(0)
+    prob.model.add_subsystem(
+           point_name,
+           aero_group,
+           promotes_inputs=[
+            "v",
+            "alpha",
+            "Mach_number",
+            "re",
+            "rho",
+            "CT",
+            "R",
+            "W0",
+            #"speed_of_sound",
+            "empty_cg",
+            "load_factor",
+        ],
+    )
+
+        
+        
+    for surface in surfaces:
+        name = surface["name"]
+        com_name = point_name + "." + name + "_perf"
+        prob.model.connect(
+            name + ".local_stiff_transformed", point_name + ".coupled." + name + ".local_stiff_transformed"
         )
+        prob.model.connect(name + ".nodes", point_name + ".coupled." + name + ".nodes")
 
-        
-        
-        for surface in surfaces:
-            name = surface["name"]
-            com_name = point_name + "." + name + "_perf"
-            prob.model.connect(
-                name + ".local_stiff_transformed", point_name + ".coupled." + name + ".local_stiff_transformed"
-            )
-            prob.model.connect(name + ".nodes", point_name + ".coupled." + name + ".nodes")
+        # Connect aerodyamic mesh to coupled group mesh
+        prob.model.connect(name + ".mesh", point_name + ".coupled." + name + ".mesh")
 
-            # Connect aerodyamic mesh to coupled group mesh
-            prob.model.connect(name + ".mesh", point_name + ".coupled." + name + ".mesh")
-
-            # Connect performance calculation variables
-            prob.model.connect(name + ".radius", com_name + ".radius")
-            prob.model.connect(name + ".thickness", com_name + ".thickness")
-            prob.model.connect(name + ".nodes", com_name + ".nodes")
-            prob.model.connect(name + ".cg_location", point_name + "." + "total_perf." + name + "_cg_location")
-            prob.model.connect(name + ".structural_mass", point_name + "." + "total_perf." + name + "_structural_mass")
-            prob.model.connect(name + ".t_over_c", com_name + ".t_over_c")
+        # Connect performance calculation variables
+        prob.model.connect(name + ".radius", com_name + ".radius")
+        prob.model.connect(name + ".thickness", com_name + ".thickness")
+        prob.model.connect(name + ".nodes", com_name + ".nodes")
+        prob.model.connect(name + ".cg_location", point_name + "." + "total_perf." + name + "_cg_location")
+        prob.model.connect(name + ".structural_mass", point_name + "." + "total_perf." + name + "_structural_mass")
+        prob.model.connect(name + ".t_over_c", com_name + ".t_over_c")
 
     # Connect surface specific parameters
 
@@ -261,13 +264,15 @@ if __name__ == "__main__":
     prob.model.connect("tail_taper", 'tail.geometry.mesh.taper.taper')
     prob.model.connect("tail_sweep", 'tail.geometry.mesh.sweep.sweep')
     prob.model.connect("tail_dihedral", 'tail.geometry.mesh.dihedral.dihedral')
-    
-
             
     prob.driver = om.ScipyOptimizeDriver()
     prob.driver.options['tol'] = 1e-4
 
-    recorder = om.SqliteRecorder("CRJ700baseline.db")
+    if mv:
+        recorder = om.SqliteRecorder("CRJ700baseline_mv.db")
+    else:
+        recorder = om.SqliteRecorder("CRJ700baseline_lf.db")
+        
     prob.driver.add_recorder(recorder)
     prob.driver.recording_options['record_derivatives'] = True
     prob.driver.recording_options['includes'] = ['*']
@@ -277,26 +282,27 @@ if __name__ == "__main__":
     #prob.model.add_design_var("wing.thickness_cp", lower=0.01, upper=0.5, scaler=1e2)
     #prob.model.add_design_var("tail.thickness_cp", lower=0.01, upper=0.5, scaler=1e2)
     
-
+    prob.model.add_design_var("alpha", lower=-10.0, upper=25.0)
+    prob.model.add_constraint("aero_point_0.wing_perf.Cl", upper=Clmax)
+    prob.model.add_constraint("aero_point_0.tail_perf.Cl", upper=Clmax) 
+    prob.model.add_constraint("aero_point_0.L_equals_W", equals=0.0)
+    
     if not mv:
-        prob.model.add_design_var("alpha", lower=-10.0, upper=20.0)
         prob.model.add_design_var("empty_cg",lower = np.array([0,0,0]),upper = np.array([10,0,0]))
 
-        prob.model.add_constraint("aero_point_0.wing_perf.Cl", upper=Clmax) 
-        prob.model.add_constraint("aero_point_0.L_equals_W", equals=0.0)
         prob.model.add_constraint("aero_point_0.CM",-1e-15,1e-15)
-        prob.model.add_constraint("aero_point_0.wing_perf.failure", upper=0.0)
-        prob.model.add_constraint("aero_point_0.tail_perf.failure", upper=0.0)
-        prob.model.add_constraint("aero_point_0.wing_perf.thickness_intersects", upper=0.0)
-        prob.model.add_constraint("aero_point_0.tail_perf.thickness_intersects", upper=0.0)
+        #prob.model.add_constraint("aero_point_0.wing_perf.failure", upper=0.0)
+        #prob.model.add_constraint("aero_point_0.tail_perf.failure", upper=0.0)
+        #prob.model.add_constraint("aero_point_0.wing_perf.thickness_intersects", upper=0.0)
+        #prob.model.add_constraint("aero_point_0.tail_perf.thickness_intersects", upper=0.0)
         
-        #prob.model.add_objective("aero_point_0.fuelburn", scaler=1e-2)
         prob.model.add_objective("aero_point_0.CD", scaler=1e4)
         prob.setup(check=True)
         prob.run_driver()
     else:
+        prob.model.add_objective("aero_point_0.fuelburn", scaler=1e-2)
         prob.setup(check=True)
-        prob.run_model()
+        prob.run_driver()
     
 
     print("Design Variables")
@@ -319,5 +325,10 @@ if __name__ == "__main__":
     print("No Failure: ", prob["aero_point_0.wing_perf.failure"], "<0")
     print("No Intersects: ", prob["aero_point_0.wing_perf.thickness_intersects"], "<0")
 
-    print("Tail CL: ",prob["aero_point_0.tail_perf.CL"][0])
+    print("Tail section Cl: ",prob["aero_point_0.tail_perf.Cl"])
+    print("Wing section Cl: ",prob["aero_point_0.wing_perf.Cl"])
+
+    print("Total Weight: ",prob["aero_point_0.total_weight"][0], " [N]")
+    
+    
     
