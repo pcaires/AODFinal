@@ -286,23 +286,24 @@ if __name__ == "__main__":
     prob.model.add_constraint("aero_point_0.wing_perf.Cl", upper=Clmax)
     prob.model.add_constraint("aero_point_0.tail_perf.Cl", upper=Clmax) 
     prob.model.add_constraint("aero_point_0.L_equals_W", equals=0.0)
+    prob.model.add_constraint("aero_point_0.wing_perf.failure", upper=0.0)
+    prob.model.add_constraint("aero_point_0.tail_perf.failure", upper=0.0)
+    prob.model.add_constraint("aero_point_0.wing_perf.thickness_intersects", upper=0.0)
+    prob.model.add_constraint("aero_point_0.tail_perf.thickness_intersects", upper=0.0)
+    prob.model.add_objective("aero_point_0.CD", scaler=1e4)
+    
     
     if not mv:
         prob.model.add_design_var("empty_cg",lower = np.array([0,0,0]),upper = np.array([10,0,0]))
-
         prob.model.add_constraint("aero_point_0.CM",-1e-15,1e-15)
         #prob.model.add_constraint("aero_point_0.wing_perf.failure", upper=0.0)
         #prob.model.add_constraint("aero_point_0.tail_perf.failure", upper=0.0)
         #prob.model.add_constraint("aero_point_0.wing_perf.thickness_intersects", upper=0.0)
         #prob.model.add_constraint("aero_point_0.tail_perf.thickness_intersects", upper=0.0)
+        #prob.model.add_objective("aero_point_0.fuelburn", scaler=1e-2)
         
-        prob.model.add_objective("aero_point_0.CD", scaler=1e4)
-        prob.setup(check=True)
-        prob.run_driver()
-    else:
-        prob.model.add_objective("aero_point_0.fuelburn", scaler=1e-2)
-        prob.setup(check=True)
-        prob.run_driver()
+    prob.setup(check=True)
+    prob.run_driver()
     
 
     print("Design Variables")
@@ -315,15 +316,18 @@ if __name__ == "__main__":
     print("CL: ", prob["aero_point_0.CL"][0])
     print("CD: ", prob["aero_point_0.CD"][0])
     print("CM: ", prob["aero_point_0.CM"][1])
-    print("Empty CG: ", prob["aero_point_0.empty_cg"])
+    if not mv:
+        print("Empty CG: ", prob["aero_point_0.empty_cg"])
     
 
 
     #print("The range value is ", prob["R"][0], "[m]")
-    print("The fuel burn value is ", prob["aero_point_0.fuelburn"][0], "[kg]")
+    if not mv:
+        print("The fuel burn value is ", prob["aero_point_0.fuelburn"][0], "[kg]")
     print("Lift to Weight difference: ", prob["aero_point_0.L_equals_W"][0])
     print("No Failure: ", prob["aero_point_0.wing_perf.failure"], "<0")
-    print("No Intersects: ", prob["aero_point_0.wing_perf.thickness_intersects"], "<0")
+    
+    #print("No Intersects: ", prob["aero_point_0.wing_perf.thickness_intersects"], "<0")
 
     print("Tail section Cl: ",prob["aero_point_0.tail_perf.Cl"])
     print("Wing section Cl: ",prob["aero_point_0.wing_perf.Cl"])
