@@ -32,10 +32,13 @@ if __name__ == "__main__":
     
     OEW = 193498/9.81   #Operating empty weigth (N)
 
-    #Fuel_Capacity = 19595*0.4535924 #kg
+    Fuel_Capacity = 19595*0.4535924 #kg
     #Payload_Useful= 18800*0.4535924 #kg
     
     Reserve_Fuel = .6*(TOW-OEW) #Approximation: 60% of cargo is fuel
+
+    if Reserve_Fuel > Fuel_Capacity:
+        raise ValueError()
 
     
     #alloy Al 7075-T6 as the material used in the manufacturing of
@@ -273,31 +276,30 @@ if __name__ == "__main__":
     #prob.model.add_design_var("wing.geometry.mesh.rotate.twist", lower=-10.0, upper=15.0)
     #prob.model.add_design_var("wing.thickness_cp", lower=0.01, upper=0.5, scaler=1e2)
     #prob.model.add_design_var("tail.thickness_cp", lower=0.01, upper=0.5, scaler=1e2)
-    prob.model.add_constraint("aero_point_0.wing_perf.failure", upper=0.0)
-    prob.model.add_constraint("aero_point_0.tail_perf.failure", upper=0.0)
-    prob.model.add_constraint("aero_point_0.wing_perf.thickness_intersects", upper=0.0)
-    prob.model.add_constraint("aero_point_0.tail_perf.thickness_intersects", upper=0.0)
     
-    
-    # Add design variables, constraints, and objective on the problem
-    prob.model.add_design_var("alpha", lower=-10.0, upper=20.0)
-    #prob.model.add_design_var("tail.geometry.mesh.rotate.twist", -10, 10)
-    prob.model.add_constraint("aero_point_0.wing_perf.Cl", upper=Clmax) 
-    prob.model.add_constraint("aero_point_0.L_equals_W", equals=0.0)
 
     if not mv:
-        prob.model.add_constraint("aero_point_0.CM",-1e-15,1e-15)
+        prob.model.add_design_var("alpha", lower=-10.0, upper=20.0)
         prob.model.add_design_var("empty_cg",lower = np.array([0,0,0]),upper = np.array([10,0,0]))
-        prob.model.add_objective("aero_point_0.fuelburn", scaler=1e-2)
-    else:
+
+        prob.model.add_constraint("aero_point_0.wing_perf.Cl", upper=Clmax) 
+        prob.model.add_constraint("aero_point_0.L_equals_W", equals=0.0)
+        prob.model.add_constraint("aero_point_0.CM",-1e-15,1e-15)
+        prob.model.add_constraint("aero_point_0.wing_perf.failure", upper=0.0)
+        prob.model.add_constraint("aero_point_0.tail_perf.failure", upper=0.0)
+        prob.model.add_constraint("aero_point_0.wing_perf.thickness_intersects", upper=0.0)
+        prob.model.add_constraint("aero_point_0.tail_perf.thickness_intersects", upper=0.0)
+        
+        #prob.model.add_objective("aero_point_0.fuelburn", scaler=1e-2)
         prob.model.add_objective("aero_point_0.CD", scaler=1e4)
+        prob.setup(check=True)
+        prob.run_driver()
+    else:
+        prob.setup(check=True)
+        prob.run_model()
+    
 
-    prob.setup(check=True)
-
-    #prob.run_model()
-    prob.run_driver()
-
-    #print("Design Variables")
+    print("Design Variables")
     print("AoA: ", prob["alpha"], "[deg]")
     #print("Spar thickness: ", prob["wing.thickness_cp"], " ")
     
