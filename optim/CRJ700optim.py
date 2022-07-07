@@ -6,14 +6,14 @@ from openaerostruct.geometry.utils import generate_mesh
 from openaerostruct.integration.aerostruct_groups import AerostructGeometry, AerostructPoint
 
 
-if False: #__name__ == "__main__":
+if  __name__ == "__main__":
 
     # --- Given parameters ----
 
     print('Complexity level select:')
     print('1- DV: aoa, span')
-    print('2- DV: aoa, spar thickness, spar radius')
-    print('3- DV: aoa, chord scaling, twist')
+    print('2- DV: aoa, spar thickness')
+    print('3- DV: aoa, chord scaling, twist, sweep')
     print('4- DV: all')
     sel = int(input('-'))
     
@@ -49,15 +49,14 @@ if False: #__name__ == "__main__":
     E = 70e9     #Young's modulus (Pa)
     G = 26e9     #Shear modulus (Pa)
     mrho = 3e3   #Material Density (kg/m3)
-    yld = 480e6  #Allowable yield stress (Pa)
+    yld = 480e6  #yield stress (Pa)
+    yld = .8*yld  #Allowable yield stress 80% (Pa)
 
     wing_thick = np.array([0.01, 0.02])
     wing_radii = np.array([0.1, 0.2])
     tail_factor = 1/2
     
     n = 2.5 #load factor
-    if not mv:
-        n = 1
 
     #Wing Profile
     CL0 = 0.2
@@ -119,7 +118,7 @@ if False: #__name__ == "__main__":
         "CL0":CL0,
         "CD0":CD0,
         "k_lam": 0.05,  
-        "t_over_c_cp": np.array([t_c]),  
+        "t_over_c_cp": np.array([t_c, t_c]),  
         "c_max_t": 0.303,  
         "with_viscous": True, 
         "with_wave": True,
@@ -161,7 +160,7 @@ if False: #__name__ == "__main__":
         "CD0": 0.0,
         "fem_origin": 0.35,
         "k_lam": 0.05,  
-        "t_over_c_cp": np.array([t_c]), 
+        "t_over_c_cp": np.array([t_c, t_c]), 
         "c_max_t": 0.303,  
         "with_viscous": True,
 
@@ -175,7 +174,7 @@ if False: #__name__ == "__main__":
         "distributed_fuel_weight": False,
         "thickness_cp":tail_factor*wing_thick,
         "radius_cp":tail_factor*wing_radii,
-        "exact_failure_constraint": False,  # if false, use KS function
+        "exact_failure_constraint": True,  # if false, use KS function
     }
 
     surfaces = [surf_dict, surf_dict2]
@@ -281,29 +280,56 @@ if False: #__name__ == "__main__":
     prob.driver.recording_options['includes'] = ['*']
 
     # Setup problem and add design variables, constraint, and objective
-    #prob.model.add_design_var("wing.geometry.mesh.rotate.twist", lower=-10.0, upper=15.0)
-    #prob.model.add_design_var("wing.thickness_cp", lower=0.01, upper=0.5, scaler=1e2)
-    #prob.model.add_design_var("tail.thickness_cp", lower=0.01, upper=0.5, scaler=1e2)
-    
+    """
+    Complexity level select:
+    1- DV: aoa, span
+    2- DV: aoa, spar thickness
+    3- DV: aoa, chord scaling, twist, sweep
+    4- DV: all
+    """
+
+    #Global
     prob.model.add_design_var("alpha", lower=-10.0, upper=25.0)
+
+    if sel == 1:
+        prob.model.add_design_var("wing.geometry.mesh.stretch.span",lower = 0.7*b, upper = 2*b)
+        prob.model.add_design_var("tail.geometry.mesh.stretch.span",lower = 0.7*bt, upper = 2*bt)
+    elif sel == 2:
+        prob.model.add_design_var("wing.thickness_cp", lower=0.001, upper=0.2, scaler = 1e4)
+        prob.model.add_design_var("tail.thickness_cp", lower=0.0005, upper=0.1, scaler = 1e4)
+        prob.model.add_constraint("aero_point_0.wing_perf.thickness_intersects", upper=0.0)
+        prob.model.add_constraint("aero_point_0.tail_perf.thickness_intersects", upper=0.0)
+    elif sel == 3:
+        prob.model.add_design_var("wing.geometry.mesh.rotate.twist", lower=-10.0, upper=15.0)
+        prob.model.add_design_var("tail.geometry.mesh.rotate.twist", lower=-10.0, upper=15.0)
+        prob.model.add_design_var("wing.geometry.mesh.scale_x.chord", lower=0.5, upper=10.0)
+        prob.model.add_design_var("tail.geometry.mesh.scale_x.chord", lower=0.5, upper=10.0)
+        prob.model.add_design_var("sweep", lower=-10.0, upper=40)
+        prob.model.add_design_var("tail_sweep", lower=-10.0, upper=40)
+    elif sel == 4:
+        prob.model.add_design_var("wing.geometry.mesh.stretch.span",lower = 0.7*b, upper = 2*b)
+        prob.model.add_design_var("tail.geometry.mesh.stretch.span",lower = 0.7*bt, upper = 2*bt)
+        prob.model.add_design_var("wing.thickness_cp", lower=0.001, upper=0.2, scaler = 1e4)
+        prob.model.add_design_var("tail.thickness_cp", lower=0.0005, upper=0.1, scaler = 1e4)
+        prob.model.add_constraint("aero_point_0.wing_perf.thickness_intersects", upper=0.0)
+        prob.model.add_constraint("aero_point_0.tail_perf.thickness_intersects", upper=0.0)
+        prob.model.add_design_var("wing.geometry.mesh.rotate.twist", lower=-10.0, upper=15.0)
+        prob.model.add_design_var("tail.geometry.mesh.rotate.twist", lower=-10.0, upper=15.0)
+        prob.model.add_design_var("wing.geometry.mesh.scale_x.chord", lower=0.5, upper=10.0)
+        prob.model.add_design_var("tail.geometry.mesh.scale_x.chord", lower=0.5, upper=10.0)
+        prob.model.add_design_var("sweep", lower=-10.0, upper=40)
+        prob.model.add_design_var("tail_sweep", lower=-10.0, upper=40)
+
+    
+    
     prob.model.add_constraint("aero_point_0.wing_perf.Cl", upper=Clmax)
     prob.model.add_constraint("aero_point_0.tail_perf.Cl", upper=Clmax) 
     prob.model.add_constraint("aero_point_0.L_equals_W", equals=0.0)
     prob.model.add_constraint("aero_point_0.wing_perf.failure", upper=0.0)
     prob.model.add_constraint("aero_point_0.tail_perf.failure", upper=0.0)
-    prob.model.add_constraint("aero_point_0.wing_perf.thickness_intersects", upper=0.0)
-    prob.model.add_constraint("aero_point_0.tail_perf.thickness_intersects", upper=0.0)
-    prob.model.add_objective("aero_point_0.CD", scaler=1e4)
     
-    
-    if not mv:
-        prob.model.add_design_var("empty_cg",lower = np.array([0,0,0]),upper = np.array([10,0,0]))
-        prob.model.add_constraint("aero_point_0.CM",-1e-15,1e-15)
-        #prob.model.add_constraint("aero_point_0.wing_perf.failure", upper=0.0)
-        #prob.model.add_constraint("aero_point_0.tail_perf.failure", upper=0.0)
-        #prob.model.add_constraint("aero_point_0.wing_perf.thickness_intersects", upper=0.0)
-        #prob.model.add_constraint("aero_point_0.tail_perf.thickness_intersects", upper=0.0)
-        #prob.model.add_objective("aero_point_0.fuelburn", scaler=1e-2)
+
+    prob.model.add_objective("aero_point_0.fuelburn", scaler=1e-2)
         
     prob.setup(check=True)
     prob.run_driver()
@@ -311,8 +337,10 @@ if False: #__name__ == "__main__":
 
     print("Design Variables")
     print("AoA: ", prob["alpha"], "[deg]")
+    print("Wing Span: ", prob["wing.geometry.mesh.stretch.span"], "[m]")
+    print("Tail Span: ", prob["tail.geometry.mesh.stretch.span"], "[m]")
     print("Wing Spar thickness: ", prob["wing.thickness_cp"], "[m]")
-    print("tail Spar thickness: ", prob["tail.thickness_cp"], "[m]")
+    print("Tail Spar thickness: ", prob["tail.thickness_cp"], "[m]")
     
 
     print("Performance Metrics")
