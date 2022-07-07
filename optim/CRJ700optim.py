@@ -56,7 +56,7 @@ if  __name__ == "__main__":
     wing_radii = np.array([0.1, 0.2])
     tail_factor = 1/2
     
-    n = 2.5 #load factor
+    n = np.array([1, 2.5]) #load factor
 
     #Wing Profile
     CL0 = 0.2
@@ -192,6 +192,7 @@ if  __name__ == "__main__":
     indep_var_comp = om.IndepVarComp()
     indep_var_comp.add_output('v', val=v, units='m/s')
     indep_var_comp.add_output('alpha', val=2, units='deg')
+    indep_var_comp.add_output('alpha_man', val=4, units='deg')
     indep_var_comp.add_output('Mach_number', val=M)
     indep_var_comp.add_output('re', val=re, units='1/m')
     indep_var_comp.add_output('rho', val=rho, units='kg/m**3')
@@ -217,48 +218,47 @@ if  __name__ == "__main__":
     for surface in surfaces:
         geom_group = AerostructGeometry(surface=surface)
         prob.model.add_subsystem(surface["name"], geom_group)
-        
 
-    aero_group = AerostructPoint(surfaces=surfaces)
-    point_name = "aero_point_{}".format(0)
-    prob.model.add_subsystem(
-           point_name,
-           aero_group,
-           promotes_inputs=[
-            "v",
-            "alpha",
-            "Mach_number",
-            "re",
-            "rho",
-            "CT",
-            "R",
-            "W0",
-            #"speed_of_sound",
-            "empty_cg",
-            "load_factor",
-        ],
-    )
+    for i in range(2): 
+        aero_group = AerostructPoint(surfaces=surfaces)
+        point_name = "aero_point_{}".format(i)
+        prob.model.add_subsystem(
+               point_name,
+               aero_group)
+        prob.model.connect("v", point_name + ".v")
+        prob.model.connect("Mach_number", point_name + ".Mach_number")
+        prob.model.connect("re", point_name + ".re")
+        prob.model.connect("rho", point_name + ".rho")
+        prob.model.connect("CT", point_name + ".CT")
+        prob.model.connect("R", point_name + ".R")
+        prob.model.connect("W0", point_name + ".W0")
+        prob.model.connect("empty_cg", point_name + ".empty_cg")
+        prob.model.connect("load_factor", point_name + ".load_factor", src_indices=[i])
 
-        
-        
-    for surface in surfaces:
-        name = surface["name"]
-        com_name = point_name + "." + name + "_perf"
-        prob.model.connect(
-            name + ".local_stiff_transformed", point_name + ".coupled." + name + ".local_stiff_transformed"
-        )
-        prob.model.connect(name + ".nodes", point_name + ".coupled." + name + ".nodes")
+            
+            
+        for surface in surfaces:
+            name = surface["name"]
+            com_name = point_name + "." + name + "_perf"
+            prob.model.connect(
+                name + ".local_stiff_transformed", point_name + ".coupled." + name + ".local_stiff_transformed"
+            )
+            prob.model.connect(name + ".nodes", point_name + ".coupled." + name + ".nodes")
 
-        # Connect aerodyamic mesh to coupled group mesh
-        prob.model.connect(name + ".mesh", point_name + ".coupled." + name + ".mesh")
+            # Connect aerodyamic mesh to coupled group mesh
+            prob.model.connect(name + ".mesh", point_name + ".coupled." + name + ".mesh")
 
-        # Connect performance calculation variables
-        prob.model.connect(name + ".radius", com_name + ".radius")
-        prob.model.connect(name + ".thickness", com_name + ".thickness")
-        prob.model.connect(name + ".nodes", com_name + ".nodes")
-        prob.model.connect(name + ".cg_location", point_name + "." + "total_perf." + name + "_cg_location")
-        prob.model.connect(name + ".structural_mass", point_name + "." + "total_perf." + name + "_structural_mass")
-        prob.model.connect(name + ".t_over_c", com_name + ".t_over_c")
+            # Connect performance calculation variables
+            prob.model.connect(name + ".radius", com_name + ".radius")
+            prob.model.connect(name + ".thickness", com_name + ".thickness")
+            prob.model.connect(name + ".nodes", com_name + ".nodes")
+            prob.model.connect(name + ".cg_location", point_name + "." + "total_perf." + name + "_cg_location")
+            prob.model.connect(name + ".structural_mass", point_name + "." + "total_perf." + name + "_structural_mass")
+            prob.model.connect(name + ".t_over_c", com_name + ".t_over_c")
+
+    # Connect point specific parameters
+    prob.model.connect("alpha", "aero_point_0.alpha")
+    prob.model.connect("alpha_man", "aero_point_1.alpha")
 
     # Connect surface specific parameters
 
@@ -290,6 +290,14 @@ if  __name__ == "__main__":
 
     #Global
     prob.model.add_design_var("alpha", lower=-10.0, upper=25.0)
+    prob.model.add_design_var("alpha_man", lower=-10.0, upper=25.0)
+    prob.model.add_constraint("aero_point_1.wing_perf.Cl", upper=Clmax)
+    prob.model.add_constraint("aero_point_1.tail_perf.Cl", upper=Clmax) 
+    prob.model.add_constraint("aero_point_0.L_equals_W", equals=0.0)
+    prob.model.add_constraint("aero_point_1.L_equals_W", equals=0.0)
+    prob.model.add_constraint("aero_point_1.wing_perf.failure", upper=0.0)
+    prob.model.add_constraint("aero_point_1.tail_perf.failure", upper=0.0)
+    prob.model.add_objective("aero_point_0.fuelburn", scaler=1e-2)
 
     if sel == 1:
         prob.model.add_design_var("wing.geometry.mesh.stretch.span",lower = 0.7*b, upper = 2*b)
@@ -297,13 +305,13 @@ if  __name__ == "__main__":
     elif sel == 2:
         prob.model.add_design_var("wing.thickness_cp", lower=0.001, upper=0.2, scaler = 1e4)
         prob.model.add_design_var("tail.thickness_cp", lower=0.0005, upper=0.1, scaler = 1e4)
-        prob.model.add_constraint("aero_point_0.wing_perf.thickness_intersects", upper=0.0)
-        prob.model.add_constraint("aero_point_0.tail_perf.thickness_intersects", upper=0.0)
+        prob.model.add_constraint("aero_point_1.wing_perf.thickness_intersects", upper=0.0)
+        prob.model.add_constraint("aero_point_1.tail_perf.thickness_intersects", upper=0.0)
     elif sel == 3:
         prob.model.add_design_var("wing.geometry.mesh.rotate.twist", lower=-10.0, upper=15.0)
         prob.model.add_design_var("tail.geometry.mesh.rotate.twist", lower=-10.0, upper=15.0)
-        prob.model.add_design_var("wing.geometry.mesh.scale_x.chord", lower=0.5, upper=10.0)
-        prob.model.add_design_var("tail.geometry.mesh.scale_x.chord", lower=0.5, upper=10.0)
+        prob.model.add_design_var("wing.geometry.mesh.scale_x.chord", lower=0.7, upper=10.0)
+        prob.model.add_design_var("tail.geometry.mesh.scale_x.chord", lower=0.7, upper=10.0)
         prob.model.add_design_var("sweep", lower=-10.0, upper=40)
         prob.model.add_design_var("tail_sweep", lower=-10.0, upper=40)
     elif sel == 4:
@@ -311,25 +319,17 @@ if  __name__ == "__main__":
         prob.model.add_design_var("tail.geometry.mesh.stretch.span",lower = 0.7*bt, upper = 2*bt)
         prob.model.add_design_var("wing.thickness_cp", lower=0.001, upper=0.2, scaler = 1e4)
         prob.model.add_design_var("tail.thickness_cp", lower=0.0005, upper=0.1, scaler = 1e4)
-        prob.model.add_constraint("aero_point_0.wing_perf.thickness_intersects", upper=0.0)
-        prob.model.add_constraint("aero_point_0.tail_perf.thickness_intersects", upper=0.0)
+        prob.model.add_constraint("aero_point_1.wing_perf.thickness_intersects", upper=0.0)
+        prob.model.add_constraint("aero_point_1.tail_perf.thickness_intersects", upper=0.0)
         prob.model.add_design_var("wing.geometry.mesh.rotate.twist", lower=-10.0, upper=15.0)
         prob.model.add_design_var("tail.geometry.mesh.rotate.twist", lower=-10.0, upper=15.0)
-        prob.model.add_design_var("wing.geometry.mesh.scale_x.chord", lower=0.5, upper=10.0)
-        prob.model.add_design_var("tail.geometry.mesh.scale_x.chord", lower=0.5, upper=10.0)
+        prob.model.add_design_var("wing.geometry.mesh.scale_x.chord", lower=0.7, upper=10.0)
+        prob.model.add_design_var("tail.geometry.mesh.scale_x.chord", lower=0.7, upper=10.0)
         prob.model.add_design_var("sweep", lower=-10.0, upper=40)
         prob.model.add_design_var("tail_sweep", lower=-10.0, upper=40)
 
     
     
-    prob.model.add_constraint("aero_point_0.wing_perf.Cl", upper=Clmax)
-    prob.model.add_constraint("aero_point_0.tail_perf.Cl", upper=Clmax) 
-    prob.model.add_constraint("aero_point_0.L_equals_W", equals=0.0)
-    prob.model.add_constraint("aero_point_0.wing_perf.failure", upper=0.0)
-    prob.model.add_constraint("aero_point_0.tail_perf.failure", upper=0.0)
-    
-
-    prob.model.add_objective("aero_point_0.fuelburn", scaler=1e-2)
         
     prob.setup(check=True)
     prob.run_driver()
@@ -337,6 +337,7 @@ if  __name__ == "__main__":
 
     print("Design Variables")
     print("AoA: ", prob["alpha"], "[deg]")
+    print("AoA (2.5g): ", prob["alpha_man"], "[deg]")
     print("Wing Span: ", prob["wing.geometry.mesh.stretch.span"], "[m]")
     print("Tail Span: ", prob["tail.geometry.mesh.stretch.span"], "[m]")
     print("Wing Spar thickness: ", prob["wing.thickness_cp"], "[m]")
@@ -344,23 +345,27 @@ if  __name__ == "__main__":
     
 
     print("Performance Metrics")
-    print("Load factor: ",n)
+    print("Empty CG: ", prob["aero_point_0.empty_cg"])
+    print("Load factor: ",n[0])
     print("CL: ", prob["aero_point_0.CL"][0])
     print("CD: ", prob["aero_point_0.CD"][0])
     print("CM: ", prob["aero_point_0.CM"][1])
-    print("Empty CG: ", prob["aero_point_0.empty_cg"])
-    
+    print("Load factor: ",n[1])
+    print("CL: ", prob["aero_point_1.CL"][0])
+    print("CD: ", prob["aero_point_1.CD"][0])
+    print("CM: ", prob["aero_point_1.CM"][1])
+
 
 
     #print("The range value is ", prob["R"][0], "[m]")
     print("The fuel burn value is ", prob["aero_point_0.fuelburn"][0], "[kg]")
     print("Lift to Weight difference: ", prob["aero_point_0.L_equals_W"][0])
-    print("No Failure: ", prob["aero_point_0.wing_perf.failure"], "<0")
+    print("No Failure (2.5g): ", prob["aero_point_1.wing_perf.failure"], "<0")
     
     #print("No Intersects: ", prob["aero_point_0.wing_perf.thickness_intersects"], "<0")
 
-    print("Tail section Cl: ",prob["aero_point_0.tail_perf.Cl"])
-    print("Wing section Cl: ",prob["aero_point_0.wing_perf.Cl"])
+    print("Tail section Cl (2.5g): ",prob["aero_point_1.tail_perf.Cl"])
+    print("Wing section Cl (2.5g): ",prob["aero_point_1.wing_perf.Cl"])
 
     print("Total Weight: ",prob["aero_point_0.total_weight"][0], " [N]")
     
