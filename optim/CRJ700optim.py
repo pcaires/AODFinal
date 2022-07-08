@@ -5,6 +5,7 @@ import openmdao.api as om
 from openaerostruct.geometry.utils import generate_mesh
 from openaerostruct.integration.aerostruct_groups import AerostructGeometry, AerostructPoint
 
+from openmdao.devtools import iprofile as tool
 
 if  __name__ == "__main__":
 
@@ -52,7 +53,13 @@ if  __name__ == "__main__":
     yld = 480e6  #yield stress (Pa)
     yld = .8*yld  #Allowable yield stress 80% (Pa)
 
-    wing_thick = np.array([0.01, 0.02])
+    if sel == 2: #bug: cant optimize spar for many starting points?
+        wing_thick = np.array([0.002, 0.01])
+    elif sel ==4:
+        wing_thick = np.array([0.003, 0.016])
+    else:
+        wing_thick = np.array([0.01, 0.02])
+        
     wing_radii = np.array([0.1, 0.2])
     tail_factor = 1/2
     
@@ -303,28 +310,28 @@ if  __name__ == "__main__":
         prob.model.add_design_var("wing.geometry.mesh.stretch.span",lower = 0.7*b, upper = 2*b)
         prob.model.add_design_var("tail.geometry.mesh.stretch.span",lower = 0.7*bt, upper = 2*bt)
     elif sel == 2:
-        prob.model.add_design_var("wing.thickness_cp", lower=0.001, upper=0.2, scaler = 1e4)
-        prob.model.add_design_var("tail.thickness_cp", lower=0.0005, upper=0.1, scaler = 1e4)
+        prob.model.add_design_var("wing.thickness_cp", lower=0.001, upper=0.5,scaler = 1e7)
+        prob.model.add_design_var("tail.thickness_cp", lower=0.0005, upper=0.5,scaler = 1e7)
         prob.model.add_constraint("aero_point_1.wing_perf.thickness_intersects", upper=0.0)
         prob.model.add_constraint("aero_point_1.tail_perf.thickness_intersects", upper=0.0)
     elif sel == 3:
         prob.model.add_design_var("wing.geometry.mesh.rotate.twist", lower=-10.0, upper=15.0)
         prob.model.add_design_var("tail.geometry.mesh.rotate.twist", lower=-10.0, upper=15.0)
-        prob.model.add_design_var("wing.geometry.mesh.scale_x.chord", lower=0.7, upper=10.0)
-        prob.model.add_design_var("tail.geometry.mesh.scale_x.chord", lower=0.7, upper=10.0)
+        prob.model.add_design_var("wing.geometry.mesh.scale_x.chord", lower=0.7, upper=2.0)
+        prob.model.add_design_var("tail.geometry.mesh.scale_x.chord", lower=0.7, upper=2.0)
         prob.model.add_design_var("sweep", lower=-10.0, upper=40)
         prob.model.add_design_var("tail_sweep", lower=-10.0, upper=40)
     elif sel == 4:
         prob.model.add_design_var("wing.geometry.mesh.stretch.span",lower = 0.7*b, upper = 2*b)
         prob.model.add_design_var("tail.geometry.mesh.stretch.span",lower = 0.7*bt, upper = 2*bt)
-        prob.model.add_design_var("wing.thickness_cp", lower=0.001, upper=0.2, scaler = 1e4)
-        prob.model.add_design_var("tail.thickness_cp", lower=0.0005, upper=0.1, scaler = 1e4)
+        prob.model.add_design_var("wing.thickness_cp", lower=0.001, upper=0.2, scaler = 1e7)
+        prob.model.add_design_var("tail.thickness_cp", lower=0.0005, upper=0.1, scaler = 1e7)
         prob.model.add_constraint("aero_point_1.wing_perf.thickness_intersects", upper=0.0)
         prob.model.add_constraint("aero_point_1.tail_perf.thickness_intersects", upper=0.0)
         prob.model.add_design_var("wing.geometry.mesh.rotate.twist", lower=-10.0, upper=15.0)
         prob.model.add_design_var("tail.geometry.mesh.rotate.twist", lower=-10.0, upper=15.0)
-        prob.model.add_design_var("wing.geometry.mesh.scale_x.chord", lower=0.7, upper=10.0)
-        prob.model.add_design_var("tail.geometry.mesh.scale_x.chord", lower=0.7, upper=10.0)
+        prob.model.add_design_var("wing.geometry.mesh.scale_x.chord", lower=0.5, upper=2.0)
+        prob.model.add_design_var("tail.geometry.mesh.scale_x.chord", lower=0.5, upper=2.0)
         prob.model.add_design_var("sweep", lower=-10.0, upper=40)
         prob.model.add_design_var("tail_sweep", lower=-10.0, upper=40)
 
@@ -332,7 +339,13 @@ if  __name__ == "__main__":
     
         
     prob.setup(check=True)
+
+    tool.setup()
+    tool.start()
+    
     prob.run_driver()
+
+    tool.stop()
     
 
     print("Design Variables")
@@ -340,6 +353,8 @@ if  __name__ == "__main__":
     print("AoA (2.5g): ", prob["alpha_man"], "[deg]")
     print("Wing Span: ", prob["wing.geometry.mesh.stretch.span"], "[m]")
     print("Tail Span: ", prob["tail.geometry.mesh.stretch.span"], "[m]")
+    print("Wing Sweep: ", prob["sweep"], "[deg]")
+    print("Tail Swepp: ", prob["tail_sweep"], "[deg]")
     print("Wing Spar thickness: ", prob["wing.thickness_cp"], "[m]")
     print("Tail Spar thickness: ", prob["tail.thickness_cp"], "[m]")
     
